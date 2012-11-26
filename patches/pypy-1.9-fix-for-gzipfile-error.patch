@@ -1,0 +1,33 @@
+--- /home/ben/Applications/pypy-1.9/lib-python/2.7/gzip.py	2011-04-28 04:01:15.000000000 +0200
++++ /home/ben/Downloads/gzip.py	2012-09-18 13:58:21.118396842 +0200
+@@ -39,7 +39,7 @@
+ 
+     """
+ 
+-    myfileobj = None
++    fileobj = None
+     max_read_chunk = 10 * 1024 * 1024   # 10Mb
+ 
+     def __init__(self, filename=None, mode=None,
+@@ -86,7 +86,7 @@
+         if mode and 'b' not in mode:
+             mode += 'b'
+         if fileobj is None:
+-            fileobj = self.myfileobj = __builtin__.open(filename, mode or 'rb')
++            fileobj = self.fileobj = __builtin__.open(filename, mode or 'rb')
+         if filename is None:
+             if hasattr(fileobj, 'name'): filename = fileobj.name
+             else: filename = ''
+@@ -363,9 +363,9 @@
+             self.fileobj = None
+         elif self.mode == READ:
+             self.fileobj = None
+-        if self.myfileobj:
+-            self.myfileobj.close()
+-            self.myfileobj = None
++        if self.fileobj:
++            self.fileobj.close()
++            self.fileobj = None
+ 
+     def flush(self,zlib_mode=zlib.Z_SYNC_FLUSH):
+         self._check_closed()

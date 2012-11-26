@@ -1,0 +1,54 @@
+--- ./pypy-1.9/lib-python/2.7/urllib2.py	2012-05-12 04:01:42.000000000 +0200
++++ /usr/lib/python2.7/urllib2.py	2012-08-01 07:39:55.000000000 +0200
+@@ -166,6 +166,12 @@
+     def __str__(self):
+         return 'HTTP Error %s: %s' % (self.code, self.msg)
+ 
++    # since URLError specifies a .reason attribute, HTTPError should also
++    #  provide this attribute. See issue13211 fo discussion.
++    @property
++    def reason(self):
++        return self.msg
++
+ # copied from cookielib.py
+ _cut_port_re = re.compile(r":\d+$")
+ def request_host(request):
+@@ -1166,13 +1172,14 @@
+ 
+         try:
+             h.request(req.get_method(), req.get_selector(), req.data, headers)
+-            try:
+-                r = h.getresponse(buffering=True)
+-            except TypeError: #buffering kw not supported
+-                r = h.getresponse()
+         except socket.error, err: # XXX what error?
+             h.close()
+             raise URLError(err)
++        else:
++            try:
++                r = h.getresponse(buffering=True)
++            except TypeError: # buffering kw not supported
++                r = h.getresponse()
+ 
+         # Pick apart the HTTPResponse object to get the addinfourl
+         # object initialized properly.
+@@ -1398,7 +1405,8 @@
+             raise URLError, ('ftp error: %s' % msg), sys.exc_info()[2]
+ 
+     def connect_ftp(self, user, passwd, host, port, dirs, timeout):
+-        fw = ftpwrapper(user, passwd, host, port, dirs, timeout)
++        fw = ftpwrapper(user, passwd, host, port, dirs, timeout,
++                        persistent=False)
+ ##        fw.ftp.set_debuglevel(1)
+         return fw
+ 
+@@ -1447,3 +1455,9 @@
+                     del self.timeout[k]
+                     break
+             self.soonest = min(self.timeout.values())
++
++    def clear_cache(self):
++        for conn in self.cache.values():
++            conn.close()
++        self.cache.clear()
++        self.timeout.clear()
