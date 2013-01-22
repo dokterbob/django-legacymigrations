@@ -138,9 +138,9 @@ class CropMapping(StringMapping):
     Subclass of the IdentityMapping, doing automated cropping of field data
     during the mapping.
     """
+
     def __init__(self, length, *args, **kwargs):
         self.length = length
-
         super(CropMapping, self).__init__(*args, **kwargs)
 
     def __repr__(self):
@@ -148,7 +148,6 @@ class CropMapping(StringMapping):
 
     def map_value(self, old_value):
         old_value = super(CropMapping, self).map_value(old_value)
-
         return old_value[:self.length]
 
 
@@ -296,6 +295,10 @@ class OneToManyMapping(Mapping):
         result_dict = {}
 
         for mapping in self.mappings:
+            # Ignore auto updated datetime fields in OneToManyMappings because they are dealt with after the model is saved.
+            if isinstance(mapping, AutoUpdatedDateTimeMapping):
+                continue
+
             value_dict = mapping(instance, from_field)
 
             assert isinstance(value_dict, dict), \

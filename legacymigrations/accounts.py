@@ -140,12 +140,6 @@ class MigrateMemberAuth(MigrateModel):
 
             # Activated user usermigrationtest2
             ('mathijs@visualspace.nl', 'pohji8'),
-
-            # Thai, in Thai
-            ('glavangadje', 'ภาษาไทย'),
-
-            # Previous user glavangadje
-            ('drbob@dokterbob.net', 'ภาษาไทย')
         )
 
         for user in test_users:

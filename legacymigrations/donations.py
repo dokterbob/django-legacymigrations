@@ -26,9 +26,10 @@ class DonationMapping(Mapping):
 
     def map(self, from_instance, from_field):
         donation = getattr(from_instance, from_field)
-        user_id = donation.member.id
+        member = donation.member
+        user_id = member.id
 
-        if donation.member.type_id == 1:
+        if member.type_id == 1 or member.username == 'guest':
             logger.debug("Guest user set donation user to None.")
             user_id = None
         

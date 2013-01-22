@@ -1,21 +1,22 @@
 # Django settings for bluebottle project.
 
+import os
 # Import global settings for overriding without throwing away defaults
 from django.conf import global_settings
+from django.utils.translation import ugettext as _
 
-from os import path
 
 # Set PROJECT_ROOT to the dir of the current file
 # Find the project's containing directory and normalize it to refer to
 # the project's root more easily
-PROJECT_ROOT = path.dirname(path.normpath(path.join(__file__, '..', '..')))
+PROJECT_ROOT = os.path.dirname(os.path.normpath(os.path.join(__file__, '..', '..')))
 
 # DJANGO_PROJECT: the short project name
 # (defaults to the basename of PROJECT_ROOT)
-DJANGO_PROJECT = path.basename(PROJECT_ROOT.rstrip('/'))
+DJANGO_PROJECT = os.path.basename(PROJECT_ROOT.rstrip('/'))
 
 DEBUG = True
-TEMPLATE_DEBUG = DEBUG
+TEMPLATE_DEBUG = True
 
 ADMINS = (
     # ('Your Name', 'your_email@example.com'),
@@ -74,7 +75,7 @@ For staticfiles and media, the following convention is used:
 
 * '/static/media/': Application media default path
 * '/static/global/': Global static media
-* '/static/apps/<app_name>/': Static assets after running `collectstatic`
+* '/static/assets/<app_name>/': Static assets after running `collectstatic`
 
 The respective URL's (available only when `DEBUG=True`) are in `urls.py`.
 
@@ -84,20 +85,18 @@ https://docs.djangoproject.com/en/1.4/ref/contrib/staticfiles/
 
 # Absolute filesystem path to the directory that will hold user-uploaded files.
 # Example: "/home/media/media.lawrence.com/media/"
-MEDIA_ROOT = path.join(PROJECT_ROOT, 'static', 'media')
+MEDIA_ROOT = os.path.join(PROJECT_ROOT, 'static', 'media')
 
 # URL that handles the media served from MEDIA_ROOT. Make sure to use a
 # trailing slash.
 # Examples: "http://media.lawrence.com/media/", "http://example.com/media/"
 MEDIA_URL = '/static/media/'
 
-
-
 # Absolute path to the directory static files should be collected to.
 # Don't put anything in this directory yourself; store your static files
 # in apps' "static/" subdirectories and in STATICFILES_DIRS.
 # Example: "/home/media/media.lawrence.com/static/"
-STATIC_ROOT = path.join(PROJECT_ROOT, 'static', 'assets')
+STATIC_ROOT = os.path.join(PROJECT_ROOT, 'static', 'assets')
 
 # URL prefix for static files.
 # Example: "http://media.lawrence.com/static/"
@@ -171,10 +170,10 @@ TEMPLATE_DIRS = (
     # Put strings here, like "/home/html/django_templates".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
-    path.join(PROJECT_ROOT, 'templates')
+    os.path.join(PROJECT_ROOT, 'templates')
 )
 
-INSTALLED_APPS = [
+INSTALLED_APPS = (
     # Django apps
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -182,8 +181,6 @@ INSTALLED_APPS = [
     'django.contrib.sites',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.admin',
-    'django.contrib.admindocs',
 
     # 3rd party apps
     'django_extensions',
@@ -196,20 +193,74 @@ INSTALLED_APPS = [
     'compressor',
     'sorl.thumbnail',
     'taggit',
+    'taggit_autocomplete_modified',
     'micawber.contrib.mcdjango', # Embedding videos
 # PYPY: Disabled because smmap (required by gitpython) doesn't run on pypy.
 # https://github.com/Byron/smmap/issues/4
 #    'gitrevision', # Display git revision
     'templatetag_handlebars',
     'rest_framework',
-]
+    'polymorphic',
 
-# Instead of writing legacy.blabla for every legacy app, we'll use a shortcut
-LEGACY_APPS = [
-    'legacymigration', # The latter is a meta-app for migrating legacy to new data
-]
+    # CMS page contents
+    'fluent_contents',
+    'fluent_contents.plugins.text',
+    'fluent_contents.plugins.oembeditem',
+    'fluent_contents.plugins.rawhtml',
+    'django_wysiwyg',
+    'tinymce',
 
-INSTALLED_APPS += map(lambda app: 'legacy.'+app, LEGACY_APPS)
+    # bluebottle apps
+    'apps.blogs',
+    'apps.bluebottle_dashboard',
+    'apps.bluebottle_utils',
+    'apps.drf2serializers',
+    'apps.contentplugins',
+    'apps.accounts',
+    'apps.love',
+    'apps.organizations',
+    'apps.projects',
+    'apps.donations',
+    'apps.geo',
+    'apps.hbtemplates',
+    'apps.reactions',
+    'apps.wallposts',
+
+    # Custom dashboard
+    'fluent_dashboard',
+    'admin_tools',
+    'admin_tools.theming',
+    'admin_tools.menu',
+    'admin_tools.dashboard',
+    'django.contrib.admin',
+    'django.contrib.admindocs',
+)
+
+# Just to keep these apps separate.
+INSTALLED_APPS  += (
+    # The models for the old db.
+    'legacy.legacyactions',
+    'legacy.legacyalbums',
+    'legacy.legacycms',
+    'legacy.legacyconsolidations',
+    'legacy.legacydonations',
+    'legacy.legacyevents',
+    'legacy.legacyfilemanager',
+    'legacy.legacymembers',
+    'legacy.legacynews',
+    'legacy.legacyorganizations',
+    'legacy.legacypayments',
+    'legacy.legacyprojects',
+    'legacy.legacysystem',
+    'legacy.legacytasks',
+    'legacy.legacyvouchers',
+    'legacy.legacyweblog',
+
+    # The app for migrating legacy to new data.
+    'legacy.legacymigration',
+)
+
+
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
@@ -240,33 +291,41 @@ LOGGING = {
     }
 }
 
+# log errors & warnings
+import logging
+logging.basicConfig(level=logging.WARNING,
+    format='%(levelname)-8s %(message)s')
 
-""" djcelery """
+
+# Django Celery - asynchronous task server
 import djcelery
 djcelery.setup_loader()
 
 
-""" django-nose """
-# Nose is temporarily not the default testrunner due to
-# https://github.com/jbalogh/django-nose/issues/85
-# TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
-# NOSE_ARGS = [
-#     '--detailed-errors',
-# ]
+# We're using nose because it limits the tests to our apps (i.e. no Django and
+# 3rd party app tests). We need this because tests in contrib.auth.user are
+# failing in Django 1.4.1. Here's the ticket for the failing test:
+# https://code.djangoproject.com/ticket/17966
+# The new test runner in Django 1.5 will be more flexible:
+#https://code.djangoproject.com/ticket/17365
+TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
+NOSE_ARGS = [
+    '--detailed-errors',
+]
+
 
 SOUTH_TESTS_MIGRATE = False # Make south shut up during tests
 
 
-""" django-compressor http://pypi.python.org/pypi/django_compressor """
+# django-compressor http://pypi.python.org/pypi/django_compressor
 STATICFILES_FINDERS += [
     # django-compressor staticfiles
     'compressor.finders.CompressorFinder',
 ]
 
-# Enable by default
+# Enable compressor by default
 COMPRESS_ENABLED = True
 COMPRESS_OUTPUT_DIR = 'compressed'
-
 COMPRESS_CSS_FILTERS = [
     'compressor.filters.css_default.CssAbsoluteFilter',
     #'compressor.filters.datauri.DataUriFilter',
@@ -289,6 +348,78 @@ LOGIN_REDIRECT_URL = '/'
 # https://docs.djangoproject.com/en/1.4/topics/auth/#storing-additional-information-about-users
 AUTH_PROFILE_MODULE = 'accounts.UserProfile'
 
+# Blog/news content configuration
+FLUENT_CONTENTS_CACHE_OUTPUT = True
+FLUENT_TEXT_CLEAN_HTML = True
+FLUENT_TEXT_SANITIZE_HTML = True
+DJANGO_WYSIWYG_FLAVOR = 'tinymce'
+
+# Custom dashboard configuration
+ADMIN_TOOLS_INDEX_DASHBOARD = 'fluent_dashboard.dashboard.FluentIndexDashboard'
+ADMIN_TOOLS_APP_INDEX_DASHBOARD = 'fluent_dashboard.dashboard.FluentAppIndexDashboard'
+ADMIN_TOOLS_MENU = 'fluent_dashboard.menu.FluentMenu'
+
+# Further customize the dashboard
+FLUENT_DASHBOARD_DEFAULT_MODULE = 'admin_tools.dashboard.modules.AppList'
+FLUENT_DASHBOARD_APP_GROUPS = (
+    (_('Site content'), {
+        'models': [
+            'apps.blogs.*',
+            'apps.media.*',
+        ],
+        'module': 'fluent_dashboard.modules.AppIconList',
+        'collapsible': False,
+    }),
+    (_('Projects'), {
+        'models': (
+            'apps.projects.models.Donation',
+            'apps.projects.models.Message',
+            'apps.projects.models.Project',
+            'apps.projects.models.Testimonial',
+            'apps.organizations.*',
+            'apps.donations.*',
+        ),
+        'module': 'fluent_dashboard.modules.AppIconList',
+        'collapsible': False,
+    }),
+    (_('Administration'), {
+        'models': (
+            '*.UserProfile',
+            'django.contrib.auth.*',
+            'django.contrib.sites.*',
+            'dashboardmods.*',
+            'google_analytics.*',
+        ),
+        'module': 'fluent_dashboard.modules.AppIconList',
+        'collapsible': False,
+    }),
+    # The '*' selector acts like a fallback for all other apps. This section mainly displays models
+    # with tabular data that is rarely touched. The important models have an icon.
+    (_('Applications'), {
+        'models': ('*',),
+        'module': FLUENT_DASHBOARD_DEFAULT_MODULE,
+        'collapsible': False,
+    }),
+)
+
+# Icon filenames can either be relative to the theme directory (if no path separators are used),
+# or be a relative to the STATIC_URL (if path separators are used in the icon name)
+# The dictionary key is appname/modelname, identical to the slugs used in the admin page URLs
+# django-fluent-dashboard ships with a set of commonly useful icons. To get the whole Oxygen set,
+# download http://download.kde.org/stable/4.9.0/src/oxygen-icons-4.9.0.tar.xz It's LGPL3 licensed.
+FLUENT_DASHBOARD_APP_ICONS = {
+    'accounts/userprofile': 'user-identity.png',
+    'blogs/blogpostproxy': 'view-pim-journal.png',
+    'blogs/newspostproxy': 'view-calendar-list.png',
+    'media/album': 'folder-image.png',
+    'donations/donation': 'help-donate.png',
+    'organizations/organization': 'x-office-address-book.png',
+    'organizations/organizationmember': 'x-office-contact.png',
+    'projects/message': 'accessories-text-editor.png',  # 'view-conversation-balloon.png',
+    'projects/testimonial': 'help-feedback.png',
+    'projects/project': 'view-time-schedule.png',
+}
+
 # Required for handlebars_template to work properly
 USE_EMBER_STYLE_ATTRS = True
 
@@ -297,11 +428,43 @@ USE_EMBER_STYLE_ATTRS = True
 THUMBNAIL_QUALITY = 85
 # TODO: Configure Sorl with Redis.
 
+REST_FRAMEWORK = {
+    'FILTER_BACKEND': 'rest_framework.filters.DjangoFilterBackend'
+}
+
 LEGACY_MIGRATIONS_MEDIA_ROOT = './'
 
 """ Legacy migrations. """
 LEGACY_MIGRATIONS = [
+    # Users
+    'legacy.legacymigration.accounts.MigrateMemberAuth',
 
+    # User profiles
+    'legacy.legacymigration.profiles.MigrateProfile',
+    'legacy.legacymigration.profiles.MigrateUserAddress',
+
+    # Organizations
+    'legacy.legacymigration.organizations.MigrateOrganization',
+    'legacy.legacymigration.organizations.MigrateOrganizationMember',
+    'legacy.legacymigration.organizations.MigrateOrganizationAddress',
+
+    # Projects
+    'legacy.legacymigration.projects.MigrateProject',
+    'legacy.legacymigration.projects.MigrateIdea',
+    'legacy.legacymigration.projects.MigrateFund',
+    'legacy.legacymigration.projects.MigrateAct',
+    'legacy.legacymigration.projects.MigrateResults',
+    'legacy.legacymigration.projects.MigrateLink',
+    'legacy.legacymigration.projects.MigrateTestimonial',
+    'legacy.legacymigration.projects.MigrateBudgetLine',
+
+    # WallPosts
+    'legacy.legacymigration.wallposts.MigrateVideoWallPosts',
+    'legacy.legacymigration.wallposts.MigrateTextWallPosts',
+    'legacy.legacymigration.wallposts.MigratePhotoWallPosts',
+
+    # Donations
+    'legacy.legacymigration.donations.MigrateDonation',
 ]
 
 # Explicitly turn on exclusions for unclean data

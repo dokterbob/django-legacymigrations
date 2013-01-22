@@ -5,9 +5,8 @@ SQL_DATA_ARCHIVE=migrated_data.sql.bz2
 MEDIA_DATA_ARCHIVE=migrated_media.tar
 MEDIA_DATA_DIR=static/media
 
-# Set resource limits to 1800MB max only when no command line args have been
-# set (i.e. --local-run has not been set).
-if [ $# -eq 0 ]; then
+# Set resource limits to 1800MB max only when --server-migration has been set.
+if [ $# -gt 0 -a "x$1" = "x--server-migration" ]; then
    ulimit -v 1800000
 fi
 
@@ -26,12 +25,13 @@ bash -x prepare.sh
 # Get into our environment
 source env/bin/activate
 
-# Use default settings on a local run.
-export DJANGO_SETTINGS_MODULE=bluebottle.settings.migration
-if [ $# -gt 0 ]; then
-    if [ $1 = "--local-run" ]; then
-        unset DJANGO_SETTINGS_MODULE
-    fi
+# Use migration settings when running on the server.
+if [ $# -gt 0 -a "x$1" = "x--server-migration" ]; then
+    export DJANGO_SETTINGS_MODULE=bluebottle.settings.migration
+
+    # Clear the local.py settings when running with the migration settings.
+    # This is required for the migration settings to work.
+    echo "" > bluebottle/settings/local.py
 fi
 
 # Setup new database
@@ -43,14 +43,16 @@ python manage.py loaddata region_subregion_country_data
 python manage.py loaddata project_partnerorganization_data
 python manage.py loaddata project_theme_data
 
-# Do the migration.
-python manage.py migrate_legacy -v 2
+# Do the migration. The migrations are being done individually so that the memory consumption is reset after each run.
+for migration in $(grep "legacy\.legacymigration\." bluebottle/settings/defaults.py | sed -e "s/'.*\.//" -e "s/',*//"); do
+  python manage.py migrate_legacy -v 2 $migration
+done
 
-# We're done if it's a local run.
-if [ $# -gt 0 ]; then
-    if [ $1 = "--local-run" ]; then
-        exit 0
-    fi
+# Finish the script if this is being run on the server.
+if [ $# -gt 0 -a "x$1" = "x--server-migration" ]; then
+    continue
+else
+    exit 0
 fi
 
 # Dump database and archive media

@@ -1,11 +1,10 @@
-# Import default settings
+# NOTE: local.py must be an empty file when using this configuration.
 
 from .defaults import *
 
-# Import secrets
-from .secrets import *
+# Put migration environment specific overrides below
 
-# Put your environment specific overrides below
+SECRET_KEY = 'hbqnTEq+m7Tk61bvRV/TLANr3i0WZ6hgBXDh3aYpSU8m+E1iCtlU3Q=='
 
 DATABASES = {
     'default': {
@@ -20,11 +19,18 @@ DATABASES = {
     }
 }
 
+import logging
+
+# Log debug messages to standard output by default
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(levelname)-8s %(message)s',
+                    datefmt='[%d/%b/%Y %H:%M:%S]')
+
+# Increase DB debug level
+logging.getLogger('django.db.backends').setLevel(logging.WARNING)
+
 # Do not run legacy migrations in debugger on testing server
 LEGACY_MIGRATIONS_DEBUG = False
-
-# Turn off debugging for added speed and (hopefully) less memory usage
-DEBUG = False
 
 # On the devserver we expect static assets to live here
 LEGACY_MIGRATIONS_MEDIA_ROOT = '/home/onepercent/data/live'

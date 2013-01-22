@@ -1,21 +1,17 @@
-import logging
-logger = logging.getLogger(__name__)
-
 import time
-
 from datetime import datetime
 from django.utils import timezone
+from django.core.management.color import no_style
 from django.db import connections
 from django.db import transaction
-from django.core.exceptions import (
-    ValidationError, NON_FIELD_ERRORS, ObjectDoesNotExist
-)
-
+from django.core.exceptions import ValidationError, NON_FIELD_ERRORS, ObjectDoesNotExist
 from pytz.exceptions import AmbiguousTimeError
-
-from .mappings import IdentityMapping, NullMapping, RelatedObjectMapping, AutoUpdatedDateTimeMapping
+from .mappings import IdentityMapping, NullMapping, RelatedObjectMapping, AutoUpdatedDateTimeMapping, OneToManyMapping
 from .settings import ENABLE_EXCLUSIONS
 from .utils import Timer
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class MigrateModel(object):
@@ -33,7 +29,7 @@ class MigrateModel(object):
 
     def __init__(self):
         # Used to store auto update datetime fields that need to be migrated.
-        self.auto_updated_datetime_fields = {}
+        self.auto_updated_datetime_fields = []
 
     def list_from_exclusions(self, qs):
         """
@@ -99,10 +95,8 @@ class MigrateModel(object):
             # Get the mapping
             mapping = self.get_mapping(field)
 
-            # Do the migration of auto updated datetime fields after the model
-            # has been saved by django.
+            # Ignore auto-updated fields as they're dealt with after the model is saved.
             if isinstance(mapping, AutoUpdatedDateTimeMapping):
-                self.auto_updated_datetime_fields[field] = mapping.get_to_field(field)
                 continue
 
             value_dict = mapping(from_instance, field)
@@ -214,18 +208,9 @@ class MigrateModel(object):
 
         return self.test_map_fields(from_instance, to_instance)
 
-    def test_multiple(self, from_qs):
-        """
-        Test the migration for all objects in to_qs.
-
-        By default, make sure we have at least correspondance.
-
-        Returns True on success, False on error.
-        """
-
-        success = True
-
+    def test_count_querysets(self):
         # Make sure we have the same number of source and destination objects
+        success = True
         from_count = self._list_from().count()
         to_count = self._list_to().count()
         if from_count != to_count:
@@ -233,8 +218,19 @@ class MigrateModel(object):
                 u'Source queryset contains %d objects while destination queryset contains %d',
                 from_count, to_count
             )
-
             success = False
+        return success
+
+    def test_multiple(self, from_qs):
+        """
+        Test the migration for all objects in to_qs.
+
+        By default, make sure we have at least correspondence.
+
+        Returns True on success, False on error.
+        """
+
+        success = self.test_count_querysets()
 
         # Do per-object checks
         counter = 0
@@ -355,9 +351,8 @@ class MigrateModel(object):
 
         # Migrate auto updated datetimes.
         if hasattr(self, 'auto_updated_datetime_fields'):
-            for from_field in self.auto_updated_datetime_fields.iterkeys():
-                self.migrate_auto_updated_datetime(from_instance, to_instance, from_field,
-                                                   self.auto_updated_datetime_fields[from_field])
+            for from_field, to_field in self.auto_updated_datetime_fields:
+                self.migrate_auto_updated_datetime(from_instance, to_instance, from_field, to_field)
 
         self.post_save(from_instance, to_instance)
 
@@ -387,6 +382,23 @@ class MigrateModel(object):
         """
         pass
 
+    def make_datetime_timezone_aware(self, datetime):
+        """
+        Converts the datetime to a timezone aware datetime.
+        """
+
+        if timezone.is_naive(datetime):
+            tz = timezone.get_default_timezone()
+            try:
+                tz_aware_datetime = tz.localize(datetime)
+            except AmbiguousTimeError:
+                logger.warning(u"Ambiguous datetime '%s' encountered, assuming DST.", datetime)
+                tz_aware_datetime = tz.localize(datetime, is_dst=True)
+        else:
+            tz_aware_datetime = datetime
+
+        return tz_aware_datetime
+
     def migrate_auto_updated_datetime(self, from_instance, to_instance, from_field, to_field):
         """
         Migrate an auto updated datetime field with custom SQL. This is needed
@@ -399,25 +411,21 @@ class MigrateModel(object):
             return
         assert isinstance(from_datetime, datetime)
 
-        # Convert the date to a timezone aware datetime.
-        if timezone.is_naive(from_datetime):
-            tz = timezone.get_default_timezone()
-            try:
-                to_datetime = tz.localize(from_datetime)
-            except AmbiguousTimeError:
-                logger.warning(
-                    u"Ambiguous datetime '%s' encountered, assuming DST.",
-                    from_datetime
-                )
-                to_datetime = tz.localize(from_datetime, is_dst=True)
-        else:
-            to_datetime = from_datetime
+        to_datetime = self.make_datetime_timezone_aware(from_datetime)
 
         # Custom SQL to set the auto updated date.
-        sql_statement = 'UPDATE %s SET %s = \'%s\' WHERE %s = %s' % (self.to_model._meta.db_table,
-                                                                     to_field, to_datetime,
-                                                                     self.to_model._meta.pk.name,
-                                                                     to_instance.pk)
+        if to_instance._meta.get_parent_list():
+            # This currently only supports the first direct parent but it's easy to extend to more levels if we need it.
+            to_parent_model = to_instance.__class__.__base__
+            to_db_table = to_parent_model._meta.db_table
+            to_pk_name = to_parent_model._meta.pk.name
+        else:
+            to_db_table = to_instance._meta.db_table
+            to_pk_name = to_instance._meta.pk.name
+
+        sql_statement = 'UPDATE %s SET %s = \'%s\' WHERE %s = %s' % (to_db_table, to_field, to_datetime,
+                                                                     to_pk_name, to_instance.pk)
+
         cursor = connections[self.to_db].cursor()
         cursor.execute(sql_statement)
         transaction.commit_unless_managed(using=self.to_db)
@@ -426,35 +434,14 @@ class MigrateModel(object):
         """
         Explicitly truncate the table and reset sequences.
         """
-        from django.db.models import Max
+        # Code for this is from this bug report:
+        # https://github.com/onepercentclub/onepercentsite/issues/4
 
-        # Get the field name
-        pk_field_name = self.to_model._meta.pk.name
-
-        # Find the latest pk
-        qs = self.to_model.objects.using(self.to_db).aggregate(latest=Max(pk_field_name))
-        latest_pk = qs['latest']
-
-        assert latest_pk
-
-        sequence_name = \
-            '%s_%s_seq' % (self.to_model._meta.db_table, pk_field_name)
-
-        logger.info(u"Updating sequence %s for primary key %s on %s to %d",
-            sequence_name, pk_field_name, self.to_model, latest_pk
-        )
-
-        # Custom SQL to restart the sequence.
-        cursor = connections[self.to_db].cursor()
-
-        # Note: This should be standard SQL
-        # Ref: http://stackoverflow.com/a/7655273/231332
-
-        cursor.execute('ALTER SEQUENCE %s RESTART WITH %d' % (
-            sequence_name, latest_pk+1
-        ))
-
-        transaction.commit_unless_managed(using=self.to_db)
+        sequence_sql = connections[self.to_db].ops.sequence_reset_sql(no_style(), [self.to_model])
+        if sequence_sql:
+            cursor = connections[self.to_db].cursor()
+            for command in sequence_sql:
+                cursor.execute(command)
 
     def migrate_all(self, debug_sql):
         """
@@ -501,6 +488,22 @@ class MigrateModel(object):
         with transaction.commit_on_success():
 
             with Timer() as t:
+                # Deal with saving the auto-updated fields before the migrations.
+                for field in self.field_mapping.iterkeys():
+                    # Get the mapping
+                    mapping = self.get_mapping(field)
+
+                    # Save the migration of auto updated datetime fields after the model has been saved by django.
+                    if isinstance(mapping, AutoUpdatedDateTimeMapping):
+                        self.auto_updated_datetime_fields.append((field, mapping.get_to_field(field)))
+                        continue
+
+                    # We also need to take care of auto updated datetime fields that are in OneToManyMappings.
+                    if isinstance(mapping, OneToManyMapping):
+                        for otm_mapping in mapping.mappings:
+                            if isinstance(otm_mapping, AutoUpdatedDateTimeMapping):
+                                self.auto_updated_datetime_fields.append((field, otm_mapping.get_to_field(field)))
+
                 # Iterate over all instances
                 for from_instance in from_qs.all():
                     # Add a sleep statement so the asychronous SQL debug statements
@@ -515,7 +518,7 @@ class MigrateModel(object):
 
                     # Print a progress message very 50 objects
                     if (counter % 50) == 0:
-                        logger.info(u'%d objects migrated', counter)
+                        logger.info(u'%d of %d objects migrated', counter, from_qs.count())
 
             logger.info(u'Migration performed in %.03f seconds.', t.interval)
             logger.info(u'Starting integrity tests.')

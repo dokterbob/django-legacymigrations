@@ -1,38 +1,18 @@
-import logging
-logger = logging.getLogger(__name__)
-
 import settings
-
 from django.db.models import Q
-
-from legacy.legacyprojects.models import (
-    Project as LegacyProject,
-    Link as LegacyLink,
-    Testimonial as LegacyTestimonial,
-    Message as LegacyMessage,
-    NeedCategory, Need
-)
-
-from apps.projects.models import (
-    Project, IdeaPhase, FundPhase, ActPhase, ResultsPhase,
-    Link, Testimonial, Message, BudgetLine, PartnerOrganization
-)
+from legacy.legacyprojects.models import Project as LegacyProject, Link as LegacyLink, Testimonial as LegacyTestimonial, Need
+from apps.projects.models import Project, IdeaPhase, FundPhase, ActPhase, ResultsPhase, Link, Testimonial, BudgetLine, PartnerOrganization
 
 from .base import MigrateModel, UniqueSlugMixin
-
-from .mappings import (
-    MappingMapping, EducateDateTimeMapping,
-    StringMapping, OneToManyMapping, CountryMapping,
-    TolerantSlugifyCroppingMapping, IdentityMapping, WebsiteMapping,
-    StringToDecimalMapping, ConcatenatingStringMapping,
-    PathToFileMapping, CropMapping, DateTimeToDateMapping,
-    AutoUpdatedDateTimeMapping
-)
-
+from .mappings import MappingMapping, EducateDateTimeMapping, StringMapping, OneToManyMapping, CountryMapping, \
+    TolerantSlugifyCroppingMapping, IdentityMapping, WebsiteMapping, StringToDecimalMapping, ConcatenatingStringMapping, \
+    PathToFileMapping, CropMapping, DateTimeToDateMapping, AutoUpdatedDateTimeMapping
 from .organizations import MigrateOrganization
 from .accounts import MigrateMemberAuth
 from .tags import copy_tags, test_tags
 
+import logging
+logger = logging.getLogger(__name__)
 
 # We want a handy reference to these status objects
 phases = Project.ProjectPhases
@@ -130,7 +110,6 @@ class PartnerMapping(IdentityMapping):
         except PartnerOrganization.DoesNotExist:
             raise Exception(u"PartnerOrganization %s not found. "
               u"Did you load fixture project_partnerorganization_data.json?" % slug)
-        return None
 
     def map(self, instance, from_field):
         new_value = None
@@ -649,26 +628,6 @@ class MigrateTestimonial(MigrateLink):
 
         'created': EducateDateTimeMapping(),
         'updated': AutoUpdatedDateTimeMapping(),
-    }
-
-
-class MigrateMessage(MigrateTestimonial):
-    from_model = LegacyMessage
-    to_model = Message
-
-    field_mapping = {
-        'id': True,
-
-        'project': None,
-        'project_id': True,
-
-        'member': None,
-        'member_id': 'user_id',
-
-        'text': 'body',
-
-        'created': EducateDateTimeMapping(),
-        'deleted': EducateDateTimeMapping()
     }
 
 
