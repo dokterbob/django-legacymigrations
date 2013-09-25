@@ -100,8 +100,9 @@ class AutoUpdatedDateTimeMapping(Mapping):
     done in MigrateModel.migrate_auto_updated_datetime().
     """
 
-    def __init__(self, to_field=None):
+    def __init__(self, to_field=None, tz_aware=True):
         self.to_field = to_field
+        self.tz_aware = tz_aware
 
     def get_to_field(self, from_field):
         if self.to_field:
