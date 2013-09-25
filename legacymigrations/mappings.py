@@ -12,13 +12,11 @@ from os import path
 from pytz.exceptions import AmbiguousTimeError
 
 from datetime import datetime
+
 from django.utils import timezone
-
 from django.core.files import File
-
 from django.template.defaultfilters import slugify
 
-from apps.geo.models import Country
 
 class Mapping(object):
     """ Base class for mappings. """
@@ -430,64 +428,6 @@ class MappingMapping(IdentityMapping):
             return self.default
 
         raise Exception(u"No mapping found for value '%s'." % old_value)
-
-
-class CountryMapping(IdentityMapping):
-    """
-    Map an instance with a LegacyCountry to the same Country in the geo app.
-    """
-
-    def __init__(self, to_field=None, reportDataChanges=False):
-        super(CountryMapping, self).__init__(to_field, reportDataChanges)
-
-    def map(self, from_instance, from_field):
-        country_id = getattr(from_instance, from_field+'_id')
-
-        if country_id:
-            # non-NULL country id, empty value falls through to last return statement
-            old_value = getattr(from_instance, from_field)
-
-            if not old_value:
-                logger.error(u"Country object not retrieved propperly for %s.",
-                    from_instance.__repr__())
-                import ipdb; ipdb.set_trace()
-
-            if old_value.code2:
-                # non-empty value for code2, empty value falls through to last return statement
-
-                try:
-                    new_value = Country.objects.get(alpha2_code=old_value.code2)
-                except Country.DoesNotExist:
-                    logger.error(u"Country code %s on %s not found in new Country table. " +
-                        u"Is the fixture for the geo app loaded?",
-                        old_value.code2, from_instance.__repr__())
-                    import ipdb; ipdb.set_trace()
-
-                logger.debug(u"Setting Country %s on %s.", old_value.code2, from_instance.__repr__())
-                return {self.get_to_field(from_field+'_id'): new_value.id}
-
-        logger.debug(u"Not setting Country for %s.", from_instance.__repr__())
-        return {}
-
-
-    def check(self, from_instance, to_instance, from_field):
-        new_value = getattr(to_instance, self.get_to_field(from_field))
-        country_id = getattr(from_instance, from_field+'_id')
-
-        if country_id:
-            # non-NULL country id
-            old_value = getattr(from_instance, from_field)
-
-            if not old_value:
-                logger.error(u"Country object not retrieved propperly for %s.",
-                    from_instance.__repr__())
-                return False
-
-            return new_value.alpha2_code == old_value.code2
-
-        else:
-            # NULL country id
-            return not new_value
 
 
 class WebsiteMapping(StringMapping):
