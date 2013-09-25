@@ -7,7 +7,6 @@ from django.core.management.base import BaseCommand
 from ...settings import MIGRATIONS, DEBUG_MIGRATIONS
 from ...utils import get_migration
 
-from apps.projects.models import Project, FundPhase
 
 class Command(BaseCommand):
     help = 'Migrate existing legacy models.'
@@ -52,13 +51,6 @@ class Command(BaseCommand):
             # have been specified on the command line
             if not args or migration.rsplit('.', 1)[1] in args:
                 self._run_migration(debug_sql, migration)
-
-        # Update money_donated for projects that have a fund phase.
-        for project in Project.objects.all():
-            try:
-                project.fundphase.update_money_donated()
-            except FundPhase.DoesNotExist:
-                pass
 
     def handle(self, *args, **options):
         # Setup the log level for root logger
