@@ -351,8 +351,10 @@ class MigrateModel(object):
 
         # Migrate auto updated datetimes.
         if hasattr(self, 'auto_updated_datetime_fields'):
-            for from_field, to_field in self.auto_updated_datetime_fields:
-                self.migrate_auto_updated_datetime(from_instance, to_instance, from_field, to_field)
+            for from_field, to_field, tz_aware in self.auto_updated_datetime_fields:
+                self.migrate_auto_updated_datetime(
+                    from_instance, to_instance, from_field, to_field, tz_aware
+                )
 
         self.post_save(from_instance, to_instance)
 
@@ -399,7 +401,7 @@ class MigrateModel(object):
 
         return tz_aware_datetime
 
-    def migrate_auto_updated_datetime(self, from_instance, to_instance, from_field, to_field):
+    def migrate_auto_updated_datetime(self, from_instance, to_instance, from_field, to_field, tz_aware):
         """
         Migrate an auto updated datetime field with custom SQL. This is needed
         because auto updated datetimes can't be set within Django.
@@ -411,23 +413,17 @@ class MigrateModel(object):
             return
         assert isinstance(from_datetime, datetime)
 
-        to_datetime = self.make_datetime_timezone_aware(from_datetime)
-
-        # Custom SQL to set the auto updated date.
-        if to_instance._meta.get_parent_list():
-            # This currently only supports the first direct parent but it's easy to extend to more levels if we need it.
-            to_parent_model = to_instance.__class__.__base__
-            to_db_table = to_parent_model._meta.db_table
-            to_pk_name = to_parent_model._meta.pk.name
+        if tz_aware:
+            to_datetime = self.make_datetime_timezone_aware(from_datetime)
         else:
-            to_db_table = to_instance._meta.db_table
-            to_pk_name = to_instance._meta.pk.name
+            to_datetime = from_datetime
 
-        sql_statement = 'UPDATE %s SET %s = \'%s\' WHERE %s = %s' % (to_db_table, to_field, to_datetime,
-                                                                     to_pk_name, to_instance.pk)
+        to_model = to_instance.__class__
 
-        cursor = connections[self.to_db].cursor()
-        cursor.execute(sql_statement)
+        to_model.objects.filter(pk=to_instance.pk).update(**{
+            to_field: to_datetime
+        })
+
         transaction.commit_unless_managed(using=self.to_db)
 
     def _update_pk_sequence(self):
@@ -495,14 +491,14 @@ class MigrateModel(object):
 
                     # Save the migration of auto updated datetime fields after the model has been saved by django.
                     if isinstance(mapping, AutoUpdatedDateTimeMapping):
-                        self.auto_updated_datetime_fields.append((field, mapping.get_to_field(field)))
+                        self.auto_updated_datetime_fields.append((field, mapping.get_to_field(field), mapping.tz_aware))
                         continue
 
                     # We also need to take care of auto updated datetime fields that are in OneToManyMappings.
                     if isinstance(mapping, OneToManyMapping):
                         for otm_mapping in mapping.mappings:
                             if isinstance(otm_mapping, AutoUpdatedDateTimeMapping):
-                                self.auto_updated_datetime_fields.append((field, otm_mapping.get_to_field(field)))
+                                self.auto_updated_datetime_fields.append((field, otm_mapping.get_to_field(field), otm_mapping.tz_aware))
 
                 # Iterate over all instances
                 for from_instance in from_qs.all():
