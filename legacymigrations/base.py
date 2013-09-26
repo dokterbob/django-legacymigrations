@@ -185,7 +185,7 @@ class MigrateModel(object):
             if not mapping.check(from_instance, to_instance, from_field):
                 logger.error(
                     u"Mapping '%s' for field '%s' on '%s' does not correspond",
-                    mapping, from_field, from_instance.__repr__()
+                    mapping, from_field, unicode(from_instance)
                 )
 
                 success = False
@@ -203,8 +203,10 @@ class MigrateModel(object):
         assert to_instance
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(u"Testing migration of '%s' to '%s'",
-                from_instance.__repr__(), to_instance.__unicode__())
+            logger.debug(
+                u"Testing migration of '%s' to '%s'",
+                unicode(from_instance), unicode(to_instance)
+            )
 
         return self.test_map_fields(from_instance, to_instance)
 
@@ -245,14 +247,15 @@ class MigrateModel(object):
                 if self.get_to(from_instance) != to_instance:
                     # TODO: This error should cause the other tests not to run AFAIK
                     logger.error(u'No bi-directional correspondence from %s to %s',
-                        from_instance.__repr__(), to_instance.__unicode__())
+                        unicode(from_instance), unicode(to_instance)
+                    )
 
                     check_success = False
 
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
                         u"Correspondence found from '%s' to '%s'.",
-                        from_instance.__repr__(), to_instance.__unicode__()
+                        unicode(from_instance), unicode(to_instance)
                     )
 
                 if from_instance in from_qs:
@@ -262,7 +265,7 @@ class MigrateModel(object):
                 else:
                     logger.error(
                         u'Correspondence %s not found in source queryset.',
-                        from_instance.__repr__()
+                        unicode(from_instance)
                     )
 
                     check_success = False
@@ -270,7 +273,7 @@ class MigrateModel(object):
             else:
                 logger.error(
                     u'No backwards correspondence to %s, skipping tests for this object.',
-                    to_instance.__unicode__()
+                    unicode(to_instance)
                 )
 
                 check_success = False
@@ -325,7 +328,7 @@ class MigrateModel(object):
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(u"Migrating '%s' to '%s'",
-                from_instance.__repr__(), to_instance.__unicode__())
+                unicode(from_instance), unicode(to_instance))
 
         self.map_fields(from_instance, to_instance)
 
@@ -463,7 +466,7 @@ class MigrateModel(object):
         for every 50 objects migrated.
         """
 
-        logger.info(u"Starting '<%s>'", self.__repr__())
+        logger.info(u"Starting '<%s>'", unicode(self))
 
         # Grab a qs of object to migrate
         from_qs = self._list_from()
